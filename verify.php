@@ -25,17 +25,33 @@ function normalize_qr_value(string $value): string
     return $value;
 }
 
-function format_student(array $registration): array
+function format_student(array $r): array
 {
     return [
-        'registration_id' => $registration['registration_id'],
-        'student_name' => $registration['student_name'],
-        'admission_no' => $registration['admission_no'],
-        'class_name' => $registration['class_name'],
-        'event_name' => $registration['event_name'],
-        'checkin_time' => $registration['checkin_time'] !== null
-            ? date('g:i A', strtotime((string) $registration['checkin_time']))
+        'registration_id' => $r['registration_id'],
+        'student_name'    => $r['student_name'],
+        'admission_no'    => $r['admission_no'],
+        'class_name'      => $r['class_name'],
+        'event_name'      => $r['event_name'],
+        'checkin_time'    => $r['checkin_time'] !== null
+            ? date('g:i A', strtotime((string) $r['checkin_time']))
             : date('g:i A'),
+        'type'            => 'student',
+    ];
+}
+
+function format_parent(array $r): array
+{
+    return [
+        'registration_id' => $r['registration_id'],
+        'student_name'    => $r['parent_name'],
+        'admission_no'    => 'N/A',
+        'class_name'      => $r['class_name'] . ' (' . $r['num_wards'] . ' ward' . ((int)$r['num_wards'] > 1 ? 's' : '') . ')',
+        'event_name'      => $r['event_name'],
+        'checkin_time'    => $r['checkin_time'] !== null
+            ? date('g:i A', strtotime((string) $r['checkin_time']))
+            : date('g:i A'),
+        'type'            => 'parent',
     ];
 }
 
@@ -47,8 +63,9 @@ $qrValue = normalize_qr_value($input);
 
 if ($qrValue === '') {
     json_response([
-        'status' => 'invalid',
-        'message' => 'Access denied. No QR token was supplied.',
+        'status'  => 'not_registered',
+        'message' => 'NOT REGISTERED',
+        'detail'  => 'No QR token supplied.',
     ], 400);
 }
 
@@ -56,61 +73,76 @@ $pdo = db();
 $pdo->beginTransaction();
 
 try {
-    $statement = $pdo->prepare(
-        'SELECT *
-         FROM registrations
+    // Check student registrations first
+    $stmt = $pdo->prepare(
+        'SELECT * FROM registrations
          WHERE qr_token = :qr_token OR registration_id = :registration_id
-         LIMIT 1
-         FOR UPDATE'
+         LIMIT 1 FOR UPDATE'
     );
-    $statement->execute([
-        'qr_token' => $qrValue,
-        'registration_id' => $qrValue,
-    ]);
-    $registration = $statement->fetch();
+    $stmt->execute(['qr_token' => $qrValue, 'registration_id' => $qrValue]);
+    $registration = $stmt->fetch();
+    $isParent = false;
+
+    // If not found in students, check parent registrations
+    if (!$registration) {
+        $stmt2 = $pdo->prepare(
+            'SELECT * FROM parent_registrations
+             WHERE qr_token = :qr_token OR registration_id = :registration_id
+             LIMIT 1 FOR UPDATE'
+        );
+        $stmt2->execute(['qr_token' => $qrValue, 'registration_id' => $qrValue]);
+        $registration = $stmt2->fetch();
+        $isParent = true;
+    }
 
     if (!$registration) {
         $pdo->commit();
         json_response([
-            'status' => 'invalid',
-            'message' => 'Access denied. This QR code is not registered for this event.',
+            'status'  => 'not_registered',
+            'message' => 'NOT REGISTERED',
+            'detail'  => 'This QR code is not registered for this event.',
         ], 404);
     }
+
+    $table = $isParent ? 'parent_registrations' : 'registrations';
 
     if ($registration['attendance_status'] === 'checked_in') {
         $pdo->commit();
         json_response([
-            'status' => 'already_checked_in',
-            'message' => 'This student has already checked in.',
-            'student' => format_student($registration),
+            'status'  => 'already_checked_in',
+            'message' => 'USER ALREADY EXISTS',
+            'detail'  => 'This pass has already been used for entry.',
+            'person'  => $isParent ? format_parent($registration) : format_student($registration),
         ], 409);
     }
 
     $update = $pdo->prepare(
-        "UPDATE registrations
+        "UPDATE {$table}
          SET attendance_status = 'checked_in', checkin_time = NOW()
          WHERE id = :id"
     );
     $update->execute(['id' => $registration['id']]);
 
-    $refresh = $pdo->prepare('SELECT * FROM registrations WHERE id = :id LIMIT 1');
+    $refresh = $pdo->prepare("SELECT * FROM {$table} WHERE id = :id LIMIT 1");
     $refresh->execute(['id' => $registration['id']]);
     $registration = $refresh->fetch();
 
     $pdo->commit();
 
     json_response([
-        'status' => 'valid',
-        'message' => 'Access granted. Student may enter.',
-        'student' => format_student($registration),
+        'status'  => 'valid',
+        'message' => 'SUCCESSFUL, ALLOW ENTRY',
+        'detail'  => 'Access granted.',
+        'person'  => $isParent ? format_parent($registration) : format_student($registration),
     ]);
+
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
-
     json_response([
-        'status' => 'error',
-        'message' => 'Verification failed. Please try again.',
+        'status'  => 'error',
+        'message' => 'NOT REGISTERED',
+        'detail'  => 'Verification failed. Please try again.',
     ], 500);
 }
