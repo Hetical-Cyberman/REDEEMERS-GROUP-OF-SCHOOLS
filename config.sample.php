@@ -2,11 +2,17 @@
 
 declare(strict_types=1);
 
-const DB_HOST = '127.0.0.1';
-const DB_NAME = 'school_event_access';
-const DB_USER = 'root';
-const DB_PASS = '';
+function env_value(string $key, string $default = ''): string
+{
+    $value = getenv($key);
+    return $value === false ? $default : $value;
+}
 
-const SCHOOL_NAME = 'School Event Check-In';
-const STAFF_USERNAME = 'admin';
-const STAFF_PASSWORD = 'change-this-password';
+define('DB_HOST', env_value('DB_HOST', '127.0.0.1'));
+define('DB_NAME', env_value('DB_NAME', 'school_event_access'));
+define('DB_USER', env_value('DB_USER', 'root'));
+define('DB_PASS', env_value('DB_PASS', ''));
+
+define('SCHOOL_NAME', env_value('SCHOOL_NAME', 'School Event Check-In'));
+define('STAFF_USERNAME', env_value('STAFF_USERNAME', 'admin'));
+define('STAFF_PASSWORD', env_value('STAFF_PASSWORD', 'change-this-password'));

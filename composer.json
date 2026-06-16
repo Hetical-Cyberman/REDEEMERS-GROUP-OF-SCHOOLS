@@ -1,0 +1,11 @@
+{
+    "name": "hetical-cyberman/school-event-access-qr-code",
+    "description": "School event registration and QR code access control system.",
+    "type": "project",
+    "require": {
+        "php": ">=8.1"
+    },
+    "scripts": {
+        "start": "sh start.sh"
+    }
+}
