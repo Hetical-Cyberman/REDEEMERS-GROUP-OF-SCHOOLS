@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 
-: "${PORT:=8000}"
+: "${PORT:=3000}"
 
 export DB_HOST="${DB_HOST:-127.0.0.1}"
 export DB_NAME="${DB_NAME:-school_event_access}"
