@@ -4,9 +4,22 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/helpers.php';
 
-$pdo = db();
-ensure_app_schema($pdo);
-$event = get_event_settings($pdo);
+$event = [
+    'event_name' => 'Graduation Day',
+    'event_date' => null,
+    'event_time' => '',
+    'venue' => '',
+    'announcement' => 'Students must present their printed QR pass at the entrance.',
+];
+$databaseError = null;
+
+try {
+    $pdo = db();
+    ensure_app_schema($pdo);
+    $event = get_event_settings($pdo);
+} catch (Throwable $exception) {
+    $databaseError = $exception->getMessage();
+}
 ?>
 <!doctype html>
 <html lang="en">

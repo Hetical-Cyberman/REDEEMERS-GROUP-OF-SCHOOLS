@@ -8,13 +8,20 @@ require_once __DIR__ . '/helpers.php';
 
 require_staff_login();
 
-$pdo = db();
-ensure_all_schema($pdo);
-
 $tables = ['event_settings', 'registrations', 'parent_registrations'];
 $counts = [];
-foreach ($tables as $table) {
-    $counts[$table] = (int) $pdo->query("SELECT COUNT(*) FROM {$table}")->fetchColumn();
+$error = null;
+
+try {
+    $pdo = db();
+    ensure_all_schema($pdo);
+
+    foreach ($tables as $table) {
+        $counts[$table] = (int) $pdo->query("SELECT COUNT(*) FROM {$table}")->fetchColumn();
+    }
+} catch (Throwable $exception) {
+    http_response_code(500);
+    $error = $exception->getMessage();
 }
 ?>
 <!doctype html>
@@ -37,13 +44,18 @@ foreach ($tables as $table) {
         </header>
 
         <section class="panel">
-            <h2>Database Ready</h2>
-            <p class="success-note">Required tables were created or confirmed successfully.</p>
-            <dl class="details">
-                <?php foreach ($counts as $table => $count): ?>
-                    <div><dt><?= e($table) ?></dt><dd><?= $count ?> records</dd></div>
-                <?php endforeach; ?>
-            </dl>
+                        <?php if ($error !== null): ?>
+                <h2>Database Connection Failed</h2>
+                <p class="error"><?= e($error) ?></p>
+            <?php else: ?>
+                <h2>Database Ready</h2>
+                <p class="success-note">Required tables were created or confirmed successfully.</p>
+                <dl class="details">
+                    <?php foreach ($counts as $table => $count): ?>
+                        <div><dt><?= e($table) ?></dt><dd><?= $count ?> records</dd></div>
+                    <?php endforeach; ?>
+                </dl>
+            <?php endif; ?>
         </section>
     </main>
 </body>
