@@ -61,7 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'num_wards'       => $numWards,
             'event_name'      => $event['event_name'],
             'verify_url'      => $verifyUrl,
-            'qr_image_url'    => 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . rawurlencode($verifyUrl),
         ];
     }
 }
@@ -75,6 +74,7 @@ $ss3Classes = ['SS3A', 'SS3B', 'SS3C', 'SS3D', 'SS3E', 'SS3F', 'SS3 Science', 'S
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Parent Registration - Redeemers International Group of Schools</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
@@ -281,6 +281,8 @@ $ss3Classes = ['SS3A', 'SS3B', 'SS3C', 'SS3D', 'SS3E', 'SS3F', 'SS3 Science', 'S
             border-radius: 10px;
             padding: 8px;
         }
+        #qrCodeBox { width: 220px; height: 220px; margin: 0 auto; border: 3px solid var(--border); border-radius: 10px; padding: 8px; background: #fff; display: flex; align-items: center; justify-content: center; }
+        #qrCodeBox canvas, #qrCodeBox img { width: 100% !important; height: 100% !important; display: block; }
         .reg-details { background: var(--light); border-radius: 8px; padding: 16px; margin-bottom: 20px; }
         .reg-details dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 0.88rem; }
         .reg-details dt { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
@@ -432,7 +434,7 @@ $ss3Classes = ['SS3A', 'SS3B', 'SS3C', 'SS3D', 'SS3E', 'SS3F', 'SS3 Science', 'S
         </div>
         <div class="popup-body">
             <div class="qr-section">
-                <img id="qrImage" src="<?= e($registration['qr_image_url']) ?>" alt="QR Code">
+                <div id="qrCodeBox" data-qr-text="<?= e($registration['verify_url']) ?>" aria-label="QR Code"></div>
                 <p style="margin-top:8px;font-size:0.82rem;color:var(--text-muted)">Present this QR code at the event entrance</p>
             </div>
             <div class="reg-details">
@@ -461,8 +463,50 @@ const regData = {
     wards: <?= json_encode($registration['num_wards']) ?>,
     className: <?= json_encode($registration['class_name']) ?>,
     event: <?= json_encode($registration['event_name']) ?>,
-    qrUrl: <?= json_encode($registration['qr_image_url']) ?>
+    qrText: <?= json_encode($registration['verify_url']) ?>
 };
+
+function renderQRCode() {
+    const qrBox = document.getElementById('qrCodeBox');
+    if (!qrBox || qrBox.dataset.rendered === '1') {
+        return;
+    }
+
+    qrBox.innerHTML = '';
+    new QRCode(qrBox, {
+        text: regData.qrText,
+        width: 220,
+        height: 220,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+    });
+    qrBox.dataset.rendered = '1';
+}
+
+function getQRCodeDataUrl() {
+    renderQRCode();
+
+    return new Promise((resolve, reject) => {
+        window.setTimeout(() => {
+            const qrBox = document.getElementById('qrCodeBox');
+            const canvas = qrBox ? qrBox.querySelector('canvas') : null;
+            const image = qrBox ? qrBox.querySelector('img') : null;
+
+            if (canvas) {
+                resolve(canvas.toDataURL('image/png'));
+                return;
+            }
+
+            if (image && image.src) {
+                resolve(image.src);
+                return;
+            }
+
+            reject(new Error('QR code was not generated.'));
+        }, 150);
+    });
+}
 
 async function downloadQRPDF() {
     const { jsPDF } = window.jspdf;
@@ -487,18 +531,14 @@ async function downloadQRPDF() {
     doc.setFont('helvetica', 'bold');
     doc.text(regData.event, 74, 37, { align: 'center' });
 
-    // QR code
+    // QR code generated locally so it embeds correctly in downloaded PDFs.
     try {
-        const img = document.getElementById('qrImage');
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        canvas.getContext('2d').drawImage(img, 0, 0);
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = await getQRCodeDataUrl();
         doc.addImage(imgData, 'PNG', 34, 48, 80, 80);
     } catch(e) {
-        doc.setTextColor(100);
-        doc.text('[QR Code]', 74, 88, { align: 'center' });
+        doc.setTextColor(180, 0, 0);
+        doc.setFontSize(10);
+        doc.text('QR code could not be generated. Please try again.', 74, 88, { align: 'center' });
     }
 
     // Details
@@ -540,6 +580,8 @@ async function downloadQRPDF() {
 
     doc.save('RIGS-Event-Pass-' + regData.id + '.pdf');
 }
+
+renderQRCode();
 
 function closePopup() {
     document.getElementById('successPopup').remove();
