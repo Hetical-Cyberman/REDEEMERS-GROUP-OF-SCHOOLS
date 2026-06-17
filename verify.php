@@ -6,7 +6,10 @@ require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/auth.php';
 
-require_staff_login();
+$isPostRequest = $_SERVER['REQUEST_METHOD'] === 'POST';
+if ($isPostRequest) {
+    require_staff_login();
+}
 
 function normalize_qr_value(string $value): string
 {
@@ -46,7 +49,7 @@ function format_parent(array $r): array
         'registration_id' => $r['registration_id'],
         'student_name'    => $r['parent_name'],
         'admission_no'    => 'N/A',
-        'class_name'      => $r['class_name'] . ' (' . $r['num_wards'] . ' ward' . ((int)$r['num_wards'] > 1 ? 's' : '') . ')',
+        'class_name'      => $r['class_name'] . ' (' . $r['num_wards'] . ' ward' . ((int) $r['num_wards'] > 1 ? 's' : '') . ')',
         'event_name'      => $r['event_name'],
         'checkin_time'    => $r['checkin_time'] !== null
             ? date('g:i A', strtotime((string) $r['checkin_time']))
@@ -55,14 +58,76 @@ function format_parent(array $r): array
     ];
 }
 
-$input = $_SERVER['REQUEST_METHOD'] === 'POST'
+function render_verification_page(array $payload, int $statusCode = 200): void
+{
+    http_response_code($statusCode);
+    $status = (string) ($payload['status'] ?? 'not_registered');
+    $person = $payload['person'] ?? null;
+    $className = $status === 'valid' ? 'success' : ($status === 'already_checked_in' ? 'warning' : 'danger');
+    $title = (string) ($payload['message'] ?? 'NOT REGISTERED');
+    $detail = (string) ($payload['detail'] ?? '');
+    ?>
+    <!doctype html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title><?= e($title) ?> - <?= e(SCHOOL_NAME) ?></title>
+        <link rel="stylesheet" href="assets/styles.css">
+        <style>
+            body { display: grid; place-items: center; padding: 24px; }
+            .verify-card { width: min(520px, 100%); text-align: center; }
+            .verify-card h1 { margin: 0 0 10px; font-size: 28px; }
+            .verify-card.success h1 { color: var(--success); }
+            .verify-card.warning h1 { color: var(--warning); }
+            .verify-card.danger h1 { color: var(--danger); }
+            .verify-card .details { margin-top: 20px; text-align: left; }
+            .verify-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+        </style>
+    </head>
+    <body>
+        <main class="panel verify-card <?= e($className) ?>">
+            <h1><?= e($title) ?></h1>
+            <p class="message"><?= e($detail) ?></p>
+
+            <?php if (is_array($person)): ?>
+                <dl class="details">
+                    <div><dt>Name</dt><dd><?= e($person['student_name'] ?? '') ?></dd></div>
+                    <div><dt>Registration ID</dt><dd><?= e($person['registration_id'] ?? '') ?></dd></div>
+                    <div><dt>Class</dt><dd><?= e($person['class_name'] ?? '') ?></dd></div>
+                    <div><dt>Event</dt><dd><?= e($person['event_name'] ?? '') ?></dd></div>
+                    <div><dt>Check-in Time</dt><dd><?= e($person['checkin_time'] ?? '') ?></dd></div>
+                </dl>
+            <?php endif; ?>
+
+            <div class="verify-actions">
+                <a class="button" href="checkin.php">Back to Scanner</a>
+                <a class="button secondary" href="dashboard.php">Dashboard</a>
+            </div>
+        </main>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
+function respond_verification(array $payload, int $statusCode = 200): void
+{
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        json_response($payload, $statusCode);
+    }
+
+    render_verification_page($payload, $statusCode);
+}
+
+$input = $isPostRequest
     ? (string) ($_POST['qr'] ?? '')
     : (string) ($_GET['token'] ?? '');
 
 $qrValue = normalize_qr_value($input);
 
 if ($qrValue === '') {
-    json_response([
+    respond_verification([
         'status'  => 'not_registered',
         'message' => 'NOT REGISTERED',
         'detail'  => 'No QR token supplied.',
@@ -74,7 +139,6 @@ ensure_all_schema($pdo);
 $pdo->beginTransaction();
 
 try {
-    // Check student registrations first
     $stmt = $pdo->prepare(
         'SELECT * FROM registrations
          WHERE qr_token = :qr_token OR registration_id = :registration_id
@@ -84,7 +148,6 @@ try {
     $registration = $stmt->fetch();
     $isParent = false;
 
-    // If not found in students, check parent registrations
     if (!$registration) {
         $stmt2 = $pdo->prepare(
             'SELECT * FROM parent_registrations
@@ -98,7 +161,7 @@ try {
 
     if (!$registration) {
         $pdo->commit();
-        json_response([
+        respond_verification([
             'status'  => 'not_registered',
             'message' => 'NOT REGISTERED',
             'detail'  => 'This QR code is not registered for this event.',
@@ -109,7 +172,7 @@ try {
 
     if ($registration['attendance_status'] === 'checked_in') {
         $pdo->commit();
-        json_response([
+        respond_verification([
             'status'  => 'already_checked_in',
             'message' => 'USER ALREADY EXISTS',
             'detail'  => 'This pass has already been used for entry.',
@@ -130,18 +193,18 @@ try {
 
     $pdo->commit();
 
-    json_response([
+    respond_verification([
         'status'  => 'valid',
         'message' => 'SUCCESSFUL, ALLOW ENTRY',
         'detail'  => 'Access granted.',
         'person'  => $isParent ? format_parent($registration) : format_student($registration),
     ]);
-
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
-    json_response([
+
+    respond_verification([
         'status'  => 'error',
         'message' => 'NOT REGISTERED',
         'detail'  => 'Verification failed. Please try again.',
