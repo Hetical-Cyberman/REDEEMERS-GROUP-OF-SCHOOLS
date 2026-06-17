@@ -113,7 +113,11 @@ function render_verification_page(array $payload, int $statusCode = 200): void
 
 function respond_verification(array $payload, int $statusCode = 200): void
 {
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $wantsJson = $_SERVER['REQUEST_METHOD'] === 'POST'
+        || ($_GET['format'] ?? '') === 'json'
+        || strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') !== false;
+
+    if ($wantsJson) {
         json_response($payload, $statusCode);
     }
 

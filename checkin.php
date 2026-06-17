@@ -206,7 +206,7 @@ require_staff_login();
         if (e.target === this) closePopup();
     });
 
-    const verifyUrl = '<?= current_url_base() ?>/verify.php';
+    const verifyUrl = 'verify.php';
 
     function extractQrToken(decodedText) {
         const raw = String(decodedText || '').trim();
@@ -227,16 +227,17 @@ require_staff_login();
         document.getElementById('statusMessage').textContent = 'Verifying scanned QR code...';
 
         try {
-            const response = await fetch(verifyUrl, {
-                method: 'POST',
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), 8000);
+            const requestUrl = verifyUrl + '?format=json&token=' + encodeURIComponent(token) + '&_=' + Date.now();
+            const response = await fetch(requestUrl, {
+                method: 'GET',
                 credentials: 'same-origin',
                 cache: 'no-store',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Accept': 'application/json'
-                },
-                body: 'qr=' + encodeURIComponent(token),
+                headers: { 'Accept': 'application/json' },
+                signal: controller.signal,
             });
+            window.clearTimeout(timeout);
 
             const data = await response.json();
             const person = data.person || data.student || null;
@@ -251,7 +252,7 @@ require_staff_login();
                 showPopup('invalid', 'NOT REGISTERED', data.detail || data.message || 'This QR code is not registered.', null);
             }
         } catch (error) {
-            showPopup('invalid', 'SCAN ERROR', 'The scanner could not verify this QR. Try again or scan with the phone camera.', null);
+            showPopup('invalid', 'SCAN ERROR', 'Verification timed out or failed. Scan again, or open the QR with the phone camera.', null);
         }
     }
 
