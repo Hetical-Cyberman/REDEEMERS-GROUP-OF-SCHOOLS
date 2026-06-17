@@ -70,6 +70,7 @@ if ($qrValue === '') {
 }
 
 $pdo = db();
+ensure_all_schema($pdo);
 $pdo->beginTransaction();
 
 try {

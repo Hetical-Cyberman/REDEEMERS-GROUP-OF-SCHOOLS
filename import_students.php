@@ -9,7 +9,7 @@ require_once __DIR__ . '/helpers.php';
 require_staff_login();
 
 $pdo = db();
-ensure_app_schema($pdo);
+ensure_all_schema($pdo);
 $event = get_event_settings($pdo);
 $error = null;
 $imported = 0;

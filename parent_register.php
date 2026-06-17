@@ -5,8 +5,7 @@ require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/helpers.php';
 
 $pdo = db();
-ensure_app_schema($pdo);
-ensure_parent_schema($pdo);
+ensure_all_schema($pdo);
 $event = get_event_settings($pdo);
 
 $registration = null;

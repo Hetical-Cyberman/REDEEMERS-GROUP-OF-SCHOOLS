@@ -9,6 +9,7 @@ require_once __DIR__ . '/helpers.php';
 require_staff_login();
 
 $pdo = db();
+ensure_all_schema($pdo);
 $students = $pdo->query('SELECT * FROM registrations ORDER BY class_name ASC, student_name ASC')->fetchAll();
 ?>
 <!doctype html>

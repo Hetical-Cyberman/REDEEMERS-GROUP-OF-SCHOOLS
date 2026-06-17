@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please complete all registration fields.';
     } else {
         $pdo = db();
+ensure_all_schema($pdo);
         $registrationId = generate_registration_id($pdo);
         $qrToken = generate_qr_token();
 

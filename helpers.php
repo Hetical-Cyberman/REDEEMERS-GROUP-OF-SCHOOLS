@@ -114,6 +114,34 @@ function ensure_parent_schema(PDO $pdo): void
     );
 }
 
+function ensure_registration_schema(PDO $pdo): void
+{
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS registrations (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            registration_id VARCHAR(30) NOT NULL UNIQUE,
+            qr_token CHAR(64) NOT NULL UNIQUE,
+            student_name VARCHAR(120) NOT NULL,
+            admission_no VARCHAR(50) NOT NULL,
+            class_name VARCHAR(50) NOT NULL,
+            event_name VARCHAR(120) NOT NULL,
+            attendance_status ENUM('registered','checked_in') NOT NULL DEFAULT 'registered',
+            checkin_time DATETIME NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_registration_id (registration_id),
+            INDEX idx_qr_token (qr_token),
+            INDEX idx_attendance_status (attendance_status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+}
+
+function ensure_all_schema(PDO $pdo): void
+{
+    ensure_app_schema($pdo);
+    ensure_registration_schema($pdo);
+    ensure_parent_schema($pdo);
+}
 function get_event_settings(PDO $pdo): array
 {
     ensure_app_schema($pdo);
