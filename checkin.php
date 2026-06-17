@@ -208,29 +208,51 @@ require_staff_login();
 
     const verifyUrl = '<?= current_url_base() ?>/verify.php';
 
-    function onScanSuccess(decodedText) {
+    function extractQrToken(decodedText) {
+        const raw = String(decodedText || '').trim();
+        try {
+            const url = new URL(raw);
+            return url.searchParams.get('token') || raw;
+        } catch (error) {
+            return raw;
+        }
+    }
+
+    async function onScanSuccess(decodedText) {
         if (!scanning) return;
         scanning = false;
 
-        fetch(verifyUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'qr=' + encodeURIComponent(decodedText),
-        })
-        .then(r => r.json())
-        .then(data => {
+        const token = extractQrToken(decodedText);
+        document.getElementById('statusBadge').textContent = 'Checking Pass';
+        document.getElementById('statusMessage').textContent = 'Verifying scanned QR code...';
+
+        try {
+            const response = await fetch(verifyUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json'
+                },
+                body: 'qr=' + encodeURIComponent(token),
+            });
+
+            const data = await response.json();
             const person = data.person || data.student || null;
+
             if (data.status === 'valid') {
                 showPopup('success', 'SUCCESSFUL, ALLOW ENTRY', data.detail || 'Access granted.', person);
             } else if (data.status === 'already_checked_in') {
                 showPopup('duplicate', 'USER ALREADY EXISTS', data.detail || 'This pass has already been used.', person);
+            } else if (data.status === 'unauthorized') {
+                showPopup('invalid', 'LOGIN REQUIRED', data.message || 'Please log in again before scanning.', null);
             } else {
-                showPopup('invalid', 'NOT REGISTERED', data.detail || 'This QR code is not registered.', null);
+                showPopup('invalid', 'NOT REGISTERED', data.detail || data.message || 'This QR code is not registered.', null);
             }
-        })
-        .catch(() => {
-            showPopup('invalid', 'NOT REGISTERED', 'Verification failed. Try again.', null);
-        });
+        } catch (error) {
+            showPopup('invalid', 'SCAN ERROR', 'The scanner could not verify this QR. Try again or scan with the phone camera.', null);
+        }
     }
 
     const html5QrCode = new Html5Qrcode("reader");
